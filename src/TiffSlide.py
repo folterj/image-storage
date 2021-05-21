@@ -1,34 +1,151 @@
+# https://pypi.org/project/tifffile/
+
+
+import os
 import numpy as np
 from PIL import Image
 from tifffile import TiffFile
-
-
-# https://pypi.org/project/tifffile/
-# based on https://gist.github.com/rfezzani/b4b8852c5a48a901c1e94e09feb34743
+from concurrent.futures import ThreadPoolExecutor
 
 
 class TiffSlide:
-    def __init__(self, filename, executor):
-        self.executor = executor
+    def __init__(self, filename, magnification, executor=None):
+        self.magnification = magnification
+        if executor is not None:
+            self.executor = executor
+        else:
+            max_workers = (os.cpu_count() or 1) + 4
+            self.executor = ThreadPoolExecutor(max_workers)
         self.pages = []
-        self.level_dimensions = []
-        self.tiff = TiffFile(filename, is_ome=True)
-        for page in self.tiff.pages:
+        self.loaded = False
+        self.decompressed = False
+        self.data = None
+        self.arrays = []
+        self.mag = []
+        self.sizes = []
+        self.main_page = -1
+        self.best_page = -1
+        tiff = TiffFile(filename)
+        index = 0
+        for page in tiff.pages:
             if page.is_tiled:
+                mag = self.get_mag(page)
+                if mag != 0 and self.main_page < 0:
+                    self.main_page = index
+                self.sizes.append((page.imagewidth, page.imagelength))
                 self.pages.append(page)
-                self.level_dimensions.append((page.imagewidth, page.imagelength))
+                index += 1
+        index = 0
+        self.best_factor = 1000
+        for page in self.pages:
+            mag = self.get_mag(page)
+            if mag == 0:
+                mag = self.calc_mag(page)
+            self.mag.append(mag)
+            mag_factor = mag / magnification
+            if 1 <= mag_factor < self.best_factor:
+                self.best_page = index
+                self.best_factor = mag_factor
+            index += 1
+        if self.best_page < 0:
+            raise ValueError(f'Error: No suitable magnification available ({self.mag})')
+        self.fh = tiff.filehandle
+
+    def load(self, decompress=False):
+        self.fh.seek(0)
+        self.data = self.fh.read()
+        self.loaded = True
+        if decompress:
+            self.decompress()
+
+    def unload(self):
+        self.loaded = False
+        del self.data
+        self.clear_decompress()
+
+    def decompress(self):
+        self.arrays = []
+        for page in self.pages:
+            self.arrays.append(self.decompress_page(page))
+        self.decompressed = True
+
+    def clear_decompress(self):
+        self.decompressed = False
+        for array in self.arrays:
+            del array
+        self.arrays = []
+
+    def decompress_page(self, page):
+        pw = page.shape[1]
+        ph = page.shape[0]
+        array = np.zeros(page.shape, page.dtype)
+        tile_width = page.tilewidth
+        tile_height = page.tilelength
+        x, y = 0, 0
+        index = 0
+        for offset, bytecount in zip(page.dataoffsets, page.databytecounts):
+            if bytecount > 0:
+                data = self.data[offset:offset + bytecount]
+                if page.jpegtables is not None:
+                    decoded = page.decode(data, index, page.jpegtables)
+                else:
+                    decoded = page.decode(data, index)
+                tile = decoded[0]
+                dw = tile.shape[-2]
+                dh = tile.shape[-3]
+                if x + dw > pw:
+                    dw = pw - x
+                if y + dh > ph:
+                    dh = ph - y
+                array[y:y + dh, x:x + dw, :] = tile[0, 0:dh, 0:dw, :]
+            x += tile_width
+            if x >= page.imagewidth:
+                x = 0
+                y += tile_height
+            index += 1
+        #self.decode(page, page.dataoffsets, page.databytecounts, tile_width, tile_height, nx, array)  # numpy is not thread-safe!
+        return array
+
+    def get_size(self):
+        # size at selected magnification
+        return np.divide(self.sizes[self.best_page], self.best_factor)
 
     def get_thumbnail(self, size):
         thumb = Image.fromarray(self.pages[-1].asarray())
         thumb.thumbnail(size, Image.ANTIALIAS)
         return thumb
 
-    def asarray(self, level, x0, y0, x1, y1):
+    def asarray(self, x0, y0, x1, y1):
+        # ensure fixed patch size
+        w0 = x1 - x0
+        h0 = y1 - y0
+        ox0, oy0 = int(round(x0 * self.best_factor)), int(round(y0 * self.best_factor))
+        ox1, oy1 = int(round(x1 * self.best_factor)), int(round(y1 * self.best_factor))
+        image0 = self.asarray_level(self.best_page, ox0, oy0, ox1, oy1)
+        mag = self.mag[self.best_page]
+        if mag == self.magnification:
+            image = image0
+        else:
+            factor = self.magnification / mag
+            w = int(round(image0.shape[1] * factor))
+            h = int(round(image0.shape[0] * factor))
+            pil_image = Image.fromarray(image0).resize((w, h))
+            image = np.array(pil_image)
+        w = image.shape[1]
+        h = image.shape[0]
+        if (h, w) != (h0, w0):
+            image = np.pad(image, ((0, h0 - h), (0, w0 - w), (0, 0)), 'edge')
+        return image
+
+    def asarray_level(self, level, x0, y0, x1, y1):
+        if self.decompressed:
+            array = self.arrays[level]
+            return array[y0:y1, x0:x1]
+
         # based on tiffile asarray
         dw = x1 - x0
         dh = y1 - y0
         page = self.pages[level]
-        fh = page.parent.filehandle
 
         tile_width, tile_height = page.tilewidth, page.tilelength
         tile_y0, tile_x0 = y0 // tile_height, x0 // tile_width
@@ -49,6 +166,14 @@ class TiffSlide:
 
         out = np.zeros((h, w, 3), page.dtype)
 
+        self.decode(page, dataoffsets, databytecounts, tile_width, tile_height, nx, out)
+
+        im_y0 = y0 - tile_y0 * tile_height
+        im_x0 = x0 - tile_x0 * tile_width
+        tile = out[im_y0: im_y0 + dh, im_x0: im_x0 + dw, :]
+        return tile
+
+    def decode(self, page, dataoffsets, databytecounts, tile_width, tile_height, nx, out):
         def process_decoded(decoded, out=out):
             segment, indices, shape = decoded
             index = indices[-2] // shape[-2]
@@ -57,26 +182,18 @@ class TiffSlide:
 
             im_y = y * tile_height
             im_x = x * tile_width
-            out[im_y: im_y + tile_height, im_x: im_x + tile_width, :] = segment[0]
+            out[im_y: im_y + tile_height, im_x: im_x + tile_width, :] = segment[0]  # numpy is not thread-safe!
 
         for _ in self.segments(
                 func=process_decoded,
-                lock=fh.lock,
-                sort=True,
                 page=page,
                 dataoffsets=dataoffsets,
                 databytecounts=databytecounts
         ):
             pass
 
-        im_y0 = y0 - tile_y0 * tile_height
-        im_x0 = x0 - tile_x0 * tile_width
-        return out[im_y0: im_y0 + dh, im_x0: im_x0 + dw, :]
-
-    def segments(self, lock, func, sort, page, dataoffsets, databytecounts):
+    def segments(self, func, page, dataoffsets, databytecounts):
         # based on tiffile segments
-        fh = page.parent.filehandle
-
         def decode(args, page=page, func=func):
             if page.jpegtables is not None:
                 decoded = page.decode(*args, page.jpegtables)
@@ -84,11 +201,36 @@ class TiffSlide:
                 decoded = page.decode(*args)
             return func(decoded)
 
-        for segments in fh.read_segments(
-                dataoffsets,
-                databytecounts,
-                lock=lock,
-                sort=sort,
-                flat=False,
-        ):
-            yield from self.executor.map(decode, segments)
+        segments = []
+        for index in range(len(dataoffsets)):
+            offset = dataoffsets[index]
+            bytecount = databytecounts[index]
+            if bytecount > 0:
+                if self.loaded:
+                    segment = self.data[offset:offset + bytecount]
+                else:
+                    fh = page.parent.filehandle
+                    fh.seek(offset)
+                    segment = fh.read(bytecount)
+            else:
+                segment = bytearray()
+            segments.append((segment, index))
+            #yield decode((segment, index))
+        yield from self.executor.map(decode, segments)
+
+    def get_mag(self, page):
+        try:
+            tags = {item.split('=')[0].strip(): item.split('=')[1].strip() for item in page.description.split('|')}
+            if 'AppMag' in tags:
+                return float(tags['AppMag'])
+        except:
+            pass
+        return 0
+
+    def calc_mag(self, page):
+        main_page = self.pages[self.main_page]
+        mag0 = self.get_mag(main_page)
+        size = (page.imagewidth, page.imagelength)
+        main_size = (main_page.imagewidth, main_page.imagelength)
+        mag = round(np.mean(np.divide(size, main_size)) * mag0, 3)
+        return mag

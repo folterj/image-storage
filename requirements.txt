@@ -1,0 +1,11 @@
+numpy
+pandas
+scikit-image
+scikit-learn
+opencv-python
+imagecodecs
+numcodecs
+TiffFile
+zarr
+tqdm
+psutil
