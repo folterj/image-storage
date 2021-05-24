@@ -126,10 +126,37 @@ def convert_tiff_tiling(input_filename, description):
         # compression=('JPEG2000', 50)
 
 
-def tiff_convert(infilename, outfilename):
-    tiff = TiffFile(infilename)
-    with TiffWriter(outfilename) as writer:
-        for page in tiff.pages:
-            if page.is_tiled:
-                tile_size = (page.tilelength, page.tilewidth)
-                writer.write(page.asarray(), tile=tile_size, compression='JPEG', description=page.description)
+def convert_slides_tiff(input_path, input_ext, output_path, output_ext):
+    for dirpath, dirs, files in os.walk(input_path):
+        for file in files:
+            if os.path.splitext(file)[1] == input_ext:
+                filename = os.path.join(dirpath, file)
+                file_ext = os.path.splitext(filename)
+                outfilename = file_ext[0].replace(input_path, output_path) + output_ext
+                convert_slide_tiff(filename, outfilename)
+
+
+def convert_slides_tiff_select(input_path, input_ext, output_path, output_ext, slidelist_filename):
+    data = pd.read_csv(slidelist_filename, delimiter='\t').to_dict()
+    image_files = list(data['path'].values())
+    for image_file in tqdm(image_files):
+        filename = os.path.join(input_path, image_file)
+        file_ext = os.path.splitext(filename)
+        outfilename = file_ext[0].replace(input_path, output_path) + output_ext
+        convert_slide_tiff(filename, outfilename)
+
+
+def convert_slide_tiff(infilename, outfilename):
+    print(f'{infilename} -> {outfilename}')
+    try:
+        tiff = TiffFile(infilename)
+        outpath = os.path.dirname(outfilename)
+        if not os.path.exists(outpath):
+            os.makedirs(outpath)
+        with TiffWriter(outfilename) as writer:
+            for page in tiff.pages:
+                if page.is_tiled:
+                    tile_size = (page.tilelength, page.tilewidth)
+                    writer.write(page.asarray(), tile=tile_size, compression='JPEG', description=page.description)
+    except Exception as e:
+        print('file:', infilename, e)
