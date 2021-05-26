@@ -13,9 +13,11 @@ RUN pip3 install --upgrade pip
 #RUN apt-get install -y openslide-tools
 #RUN apt-get install -y python-tifffile
 
-COPY . /image-storage
+COPY requirements.txt /image-storage/requirements.txt
 WORKDIR /image-storage
 RUN pip3 install -r requirements.txt
+
+COPY . /image-storage
 
 ENV PYTHONUNBUFFERED=TRUE
 ENV PYTHONPATH=/image-storage

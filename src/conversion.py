@@ -147,16 +147,17 @@ def convert_slides_tiff_select(input_path, input_ext, output_path, output_ext, s
 
 
 def convert_slide_tiff(infilename, outfilename):
-    print(f'{infilename} -> {outfilename}')
-    try:
-        tiff = TiffFile(infilename)
-        outpath = os.path.dirname(outfilename)
-        if not os.path.exists(outpath):
-            os.makedirs(outpath)
-        with TiffWriter(outfilename) as writer:
-            for page in tiff.pages:
-                if page.is_tiled:
-                    tile_size = (page.tilelength, page.tilewidth)
-                    writer.write(page.asarray(), tile=tile_size, compression='JPEG', description=page.description)
-    except Exception as e:
-        print('file:', infilename, e)
+    if not os.path.exists(outfilename):
+        print(f'{infilename} -> {outfilename}')
+        try:
+            tiff = TiffFile(infilename)
+            outpath = os.path.dirname(outfilename)
+            if not os.path.exists(outpath):
+                os.makedirs(outpath)
+            with TiffWriter(outfilename, bigtiff=True) as writer:
+                for page in tiff.pages:
+                    if page.is_tiled:
+                        tile_size = (page.tilelength, page.tilewidth)
+                        writer.write(page.asarray(), tile=tile_size, compression='JPEG', description=page.description)
+        except Exception as e:
+            print('file:', infilename, e)
