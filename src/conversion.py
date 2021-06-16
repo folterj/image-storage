@@ -136,7 +136,7 @@ def convert_slides_tiff(input_path, input_ext, output_path, output_ext):
                 convert_slide_tiff(filename, outfilename)
 
 
-def convert_slides_tiff_select(input_path, input_ext, output_path, output_ext, slidelist_filename):
+def convert_slides_tiff_select(input_path, output_path, output_ext, slidelist_filename):
     data = pd.read_csv(slidelist_filename, delimiter='\t').to_dict()
     image_files = list(data['path'].values())
     for image_file in tqdm(image_files):
