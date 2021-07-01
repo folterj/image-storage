@@ -4,7 +4,7 @@ from PIL import Image
 from concurrent.futures import ThreadPoolExecutor
 
 
-Image.MAX_IMAGE_PIXELS = None   # avoid DecompressionBombError (which denies loading large images)
+Image.MAX_IMAGE_PIXELS = None   # avoid DecompressionBombError (which prevents loading large images)
 
 
 class PlainImageSlide:
