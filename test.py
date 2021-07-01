@@ -31,9 +31,9 @@ def test_read_slide(image_filename, magnification, n=1000):
         yi = random.randrange(ny)
         x = xi * patch_size[0]
         y = yi * patch_size[1]
-        tile = slide.asarray(x, y, x + patch_size[0], y + patch_size[1])
-        #plt.imshow(tile)
-        #plt.show()
+        image = slide.asarray(x, y, x + patch_size[0], y + patch_size[1])
+        image.shape
+        #show_image(image)
     elapsed = timer() - start
     print(f'time (total/step): {elapsed:.3f} / {elapsed / n:.3f}')
 
@@ -87,11 +87,11 @@ if __name__ == '__main__':
     #plt.imshow(image)
     #plt.show()
 
-    #test_read_slide(filename_tiff, magnification)
+    test_read_slide(filename_tiff, magnification)
 
-    position = (500 * magnification, 500 * magnification)
-    image_svs = test_load(filename_svs, magnification, position, patch_size)
-    image_tiff = test_load(filename_tiff, magnification, position, patch_size)
-    show_image(image_svs)
-    show_image(image_tiff)
-    dif = compare_image(image_svs, image_tiff)
+    #position = (500 * magnification, 500 * magnification)
+    #image_svs = test_load(filename_svs, magnification, position, patch_size)
+    #image_tiff = test_load(filename_tiff, magnification, position, patch_size)
+    #show_image(image_svs)
+    #show_image(image_tiff)
+    #dif = compare_image(image_svs, image_tiff)

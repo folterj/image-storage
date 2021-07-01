@@ -64,7 +64,7 @@ class TiffSlide:
         self.clear_decompress()
 
     def decompress(self):
-        self.arrays = []
+        self.clear_decompress()
         for page in self.pages:
             self.arrays.append(self.decompress_page(page))
         self.decompressed = True
