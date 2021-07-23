@@ -127,7 +127,7 @@ if __name__ == '__main__':
 
     #omero.random_read_test()
 
-    image_id = 0
-    slide_image = omero.convert_slide_to_tiff(image_id, '/resources/images/test.tiff')
+    image_id = 'K021_PR001'
+    slide_image = omero.convert_slide_to_tiff(image_id, '../resources/images/test.tiff')
 
     omero.disconnect()

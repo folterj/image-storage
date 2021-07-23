@@ -1,7 +1,8 @@
+from src.Omero import Omero, print_omero_object
 from src.conversion import convert_slides_tiff_select
 
 
-if __name__ == '__main__':
+def convert_slides():
     #input_path = 'resources/images/'
     input_path = 'D:/Personal/Crick/oRAScle i2i pathology/slides'
     #input_path = '/camp/stp/babs/outputs/ddt/amy.strange/philip.east/histo_slides/'
@@ -14,3 +15,24 @@ if __name__ == '__main__':
     #convert_slide_tiff(infilename, outfilename)
 
     convert_slides_tiff_select(input_path, output_path, '.tiff', slidelist_filename)
+
+
+def convert_omero_slides():
+    omero = Omero()
+    omero.connect_prompt()
+
+    #omero.open_dataset(61, 'Histology Tiffs')
+    omero.open_dataset(355, 'K021')
+    print_omero_object(omero.dataset)
+
+    #omero.random_read_test()
+
+    image_id = 'K021_PR001'
+    slide_image = omero.convert_slide_to_tiff(image_id, 'resources/images/test.tiff')
+
+    omero.disconnect()
+
+
+if __name__ == '__main__':
+    #convert_slides()
+    convert_omero_slides()
