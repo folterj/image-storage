@@ -30,6 +30,7 @@ class Omero:
                             host=hostname, secure=True)
         self.conn.connect()
         if not self.conn.isConnected():
+            self.disconnect()
             raise ConnectionError
         self.conn.c.enableKeepAlive(60)
         self.connected = True
@@ -53,25 +54,28 @@ class Omero:
         zs, cs, ts = image_object.getSizeZ(), image_object.getSizeC(), image_object.getSizeT()
         return ws, hs, zs, cs, ts
 
+    def get_magnification(self, image_object):
+        return image_object.getObjectiveSettings().getObjective().getNominalMagnification()
+
     def convert_slide_to_tiff(self, image_id, outfilename):
         image_object = self.dataset.findChildByName(image_id)
         # image_object = self.conn.getObject("Image", image_id)
         ws, hs, zs, cs, ts = self.get_size(image_object)
         print('Size:', ws, hs, zs, cs, ts)
 
-        tiff_content = image_object.exportOmeTiff()
-        with open(outfilename, 'wb') as writer:
-            writer.write(tiff_content)
+        #tiff_content = image_object.exportOmeTiff()
+        #with open(outfilename, 'wb') as writer:
+        #    writer.write(tiff_content)
 
-        # outpath = os.path.dirname(outfilename)
-        # if not os.path.exists(outpath):
-        #     os.makedirs(outpath)
-        # pixels = image_object.getPrimaryPixels()
-        # with TiffWriter(outfilename, bigtiff=True) as writer:
-        #     for z in zs:
-        #         tile_size = (tilelength, tilewidth)
-        #         slide_image = pixels.getPlane(z, 0, 0)
-        #         writer.write(slide_image, tile=tile_size, compression='JPEG', description=page.description)
+        outpath = os.path.dirname(outfilename)
+        if not os.path.exists(outpath):
+            os.makedirs(outpath)
+        pixels = image_object.getPrimaryPixels()
+        with TiffWriter(outfilename, bigtiff=True) as writer:
+            for c in range(cs):
+                tile_size = (256, 256)
+                slide_image = pixels.getPlane(0, c, 0)
+                writer.write(slide_image, tile=tile_size, compression='JPEG', description=page.description)
 
     def random_read_test(self):
         print('Read test')

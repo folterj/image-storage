@@ -28,7 +28,7 @@ def convert_omero_slides():
     #omero.random_read_test()
 
     image_id = 'K021_PR001'
-    slide_image = omero.convert_slide_to_tiff(image_id, 'resources/images/test.tiff')
+    omero.convert_slide_to_tiff(image_id, 'resources/images/test.tiff')
 
     omero.disconnect()
 
