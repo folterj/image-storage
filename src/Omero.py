@@ -1,9 +1,12 @@
 import os
+import numpy as np
 import random
 from omero.gateway import BlitzGateway
 from getpass import getpass
 from tifffile import TiffWriter
 from tqdm import tqdm
+
+from src.image_util import show_image
 
 
 SRC_HOST = 'ssl://omero-prod.camp.thecrick.org'
@@ -50,9 +53,9 @@ class Omero:
         return self.dataset
 
     def get_size(self, image_object):
-        ws, hs = image_object.getSizeX(), image_object.getSizeY()
+        xs, ys = image_object.getSizeX(), image_object.getSizeY()
         zs, cs, ts = image_object.getSizeZ(), image_object.getSizeC(), image_object.getSizeT()
-        return ws, hs, zs, cs, ts
+        return xs, ys, zs, cs, ts
 
     def get_magnification(self, image_object):
         return image_object.getObjectiveSettings().getObjective().getNominalMagnification()
@@ -60,22 +63,45 @@ class Omero:
     def convert_slide_to_tiff(self, image_id, outfilename):
         image_object = self.dataset.findChildByName(image_id)
         # image_object = self.conn.getObject("Image", image_id)
-        ws, hs, zs, cs, ts = self.get_size(image_object)
-        print('Size:', ws, hs, zs, cs, ts)
+        w, h, zs, cs, ts = self.get_size(image_object)
+        print('Size:', w, h, zs, cs, ts)
 
-        #tiff_content = image_object.exportOmeTiff()
+        #tiff_content = image_object.exportOmeTiff()    # not working
         #with open(outfilename, 'wb') as writer:
         #    writer.write(tiff_content)
+
+        # slide_image = pixels.getPlane()   # not working
+
+        read_size = 1024
+        ny = int(np.ceil(h / read_size))
+        nx = int(np.ceil(w / read_size))
+        tile_size = (256, 256)
+
+        metadata = {'mag': self.get_magnification(image_object)}
+        pixels = image_object.getPrimaryPixels()
+
+        slide_image = np.zeros((h, w, cs), dtype=np.uint8)
+
+        for y in range(ny):
+            for x in range(nx):
+                tw, th = read_size, read_size
+                sx = x * read_size
+                sy = y * read_size
+                if sx + tw > w:
+                    tw = w - sx
+                if sy + th > h:
+                    th = h - sy
+                xywh = (sx, sy, tw, th)
+                tile_coords = [(0, c, 0, xywh) for c in range(cs)]
+                image_gen = pixels.getTiles(tile_coords)
+                for c, image in enumerate(image_gen):
+                    slide_image[sy:sy + th, sx:sx + tw, c] = image
 
         outpath = os.path.dirname(outfilename)
         if not os.path.exists(outpath):
             os.makedirs(outpath)
-        pixels = image_object.getPrimaryPixels()
         with TiffWriter(outfilename, bigtiff=True) as writer:
-            for c in range(cs):
-                tile_size = (256, 256)
-                slide_image = pixels.getPlane(0, c, 0)
-                writer.write(slide_image, tile=tile_size, compression='JPEG', description=page.description)
+            writer.write(slide_image, tile=tile_size, compression='JPEG', description=metadata)
 
     def random_read_test(self):
         print('Read test')
@@ -86,6 +112,7 @@ class Omero:
             name = image_object.getName()
             if not name.endswith('_label') and not name.endswith('_macro'):
                 size = image_object.getSizeX(), image_object.getSizeY()
+                nchannels = image_object.getSizeC()
                 print(name, size)
                 pixels = image_object.getPrimaryPixels()
                 image_objects.append(image_object)
@@ -96,14 +123,17 @@ class Omero:
             i = random.randrange(len(image_objects))
             size = sizes[i]
             pixels = pixel_objects[i]
+            w = 512
+            h = 512
             xywh = (size[0]/2, size[1]/2, 512, 512)
 
             xywh = (random.randrange(size[0]-512), random.randrange(size[1]-512), 512, 512)
-            tile_coords = [(0, 0, 0, xywh)]
+            tile_coords = [(0, c, 0, xywh) for c in range(nchannels)]
             image_gen = pixels.getTiles(tile_coords)
-            for image in image_gen:
-                image.shape
-                #show_image(image)
+            dest_image = np.zeros((h, w, nchannels), dtype=np.uint8)
+            for c, image in enumerate(image_gen):
+                dest_image[:, :, c] = image
+            show_image(dest_image)
 
 def print_omero_object(object, indent=0):
     """
