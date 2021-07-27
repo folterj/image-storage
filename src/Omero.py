@@ -17,9 +17,9 @@ class Omero:
         self.connected = False
 
     def connect_prompt(self):
-        self.connect(SRC_HOST, input("Username: "), getpass("OMERO Password: "))
+        self.connect(SRC_HOST, input('Username: '), getpass('OMERO Password: '))
         self.conn.SERVICE_OPTS.setOmeroGroup('-1')
-        print("Connected as {}".format(self.conn.getUser().getName()))
+        print(f'Connected as {self.conn.getUser().getName()}')
 
     def connect(self, hostname, username, password):
         """
@@ -57,6 +57,26 @@ class Omero:
         zs, cs, ts = image_object.getSizeZ(), image_object.getSizeC(), image_object.getSizeT()
         return xs, ys, zs, cs, ts
 
+    def get_metadata(self, image_object):
+        metadata = {}
+        data = []
+        for data0 in image_object.loadOriginalMetadata():
+            if data0 is not None:
+                data += data0
+        for key, value in data:
+            keys = key.split('|')
+            self.add_dict_tree(metadata, keys, value)
+        return metadata
+
+    def add_dict_tree(self, metadata, keys, value):
+        key = keys[0]
+        if len(keys) > 1:
+            if key not in metadata:
+                metadata[key] = {}
+            self.add_dict_tree(metadata[key], keys[1:], value)
+        else:
+            metadata[key] = value
+
     def get_magnification(self, image_object):
         return image_object.getObjectiveSettings().getObjective().getNominalMagnification()
 
@@ -72,10 +92,15 @@ class Omero:
 
         # slide_image = pixels.getPlane()   # not working
 
+        h//=100
+        w//=100
         read_size = 1024
         ny = int(np.ceil(h / read_size))
         nx = int(np.ceil(w / read_size))
         tile_size = (256, 256)
+
+        metadata = self.get_metadata(image_object)
+        # convert to summary for page description
 
         metadata = {'mag': self.get_magnification(image_object)}
         pixels = image_object.getPrimaryPixels()
@@ -84,9 +109,8 @@ class Omero:
 
         for y in range(ny):
             for x in range(nx):
+                sx, sy = x * read_size, y * read_size
                 tw, th = read_size, read_size
-                sx = x * read_size
-                sy = y * read_size
                 if sx + tw > w:
                     tw = w - sx
                 if sy + th > h:
@@ -101,7 +125,8 @@ class Omero:
         if not os.path.exists(outpath):
             os.makedirs(outpath)
         with TiffWriter(outfilename, bigtiff=True) as writer:
-            writer.write(slide_image, tile=tile_size, compression='JPEG', description=metadata)
+            writer.write(slide_image, photometric='RGB', tile=tile_size, compression='JPEG',
+                         metadata=metadata)
 
     def random_read_test(self):
         print('Read test')
@@ -162,6 +187,6 @@ if __name__ == '__main__':
     #omero.random_read_test()
 
     image_id = 'K021_PR001'
-    slide_image = omero.convert_slide_to_tiff(image_id, '../resources/images/test.tiff')
+    omero.convert_slide_to_tiff(image_id, '../resources/images/test.tiff')
 
     omero.disconnect()
