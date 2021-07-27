@@ -8,7 +8,9 @@ Image.MAX_IMAGE_PIXELS = None   # avoid DecompressionBombError (which prevents l
 
 
 class PlainImageSlide:
-    def __init__(self, filename, source_magnification, target_magnification, executor=None):
+    def __init__(self, filename, source_mag, target_mag, executor=None):
+        if source_mag is None or source_mag == 0:
+            raise ValueError(f'Error: Provide source magnification (in parameter file) for images without meta-data')
         if executor is not None:
             self.executor = executor
         else:
@@ -19,7 +21,8 @@ class PlainImageSlide:
         self.arrays = []
         self.image = Image.open(filename)
         self.size = (self.image.width, self.image.height)
-        self.mag_factor = source_magnification / target_magnification
+        self.source_mag = source_mag
+        self.mag_factor = source_mag / target_mag
 
     def load(self):
         self.unload()
@@ -65,5 +68,11 @@ class PlainImageSlide:
         return image
 
     def asarray_level(self, level, x0, y0, x1, y1):
-        array = self.arrays[level]
+        if self.loaded:
+            array = self.arrays[level]
+        else:
+            array = np.array(self.image)
         return array[y0:y1, x0:x1]
+
+    def get_max_mag(self):
+        return self.source_mag

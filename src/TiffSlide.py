@@ -9,8 +9,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 
 class TiffSlide:
-    def __init__(self, filename, magnification, executor=None):
-        self.magnification = magnification
+    def __init__(self, filename, target_mag, executor=None):
+        self.target_mag = target_mag
         if executor is not None:
             self.executor = executor
         else:
@@ -21,7 +21,7 @@ class TiffSlide:
         self.decompressed = False
         self.data = None
         self.arrays = []
-        self.mag = []
+        self.source_mags = []
         self.sizes = []
         self.main_page = -1
         self.best_page = -1
@@ -38,17 +38,17 @@ class TiffSlide:
         index = 0
         self.best_factor = 1000
         for page in self.pages:
-            mag = self.get_mag(page)
-            if mag == 0:
-                mag = self.calc_mag(page)
-            self.mag.append(mag)
-            mag_factor = mag / magnification
+            source_mag = self.get_mag(page)
+            if source_mag == 0:
+                source_mag = self.calc_mag(page)
+            self.source_mags.append(source_mag)
+            mag_factor = source_mag / target_mag
             if 1 <= mag_factor < self.best_factor:
                 self.best_page = index
                 self.best_factor = mag_factor
             index += 1
         if self.best_page < 0:
-            raise ValueError(f'Error: No suitable magnification available ({self.mag})')
+            raise ValueError(f'Error: No suitable magnification available ({self.source_mags})')
         self.fh = tiff.filehandle
 
     def load(self, decompress=False):
@@ -119,18 +119,19 @@ class TiffSlide:
         # ensure fixed patch size
         w0 = x1 - x0
         h0 = y1 - y0
-        ox0, oy0 = int(round(x0 * self.best_factor)), int(round(y0 * self.best_factor))
-        ox1, oy1 = int(round(x1 * self.best_factor)), int(round(y1 * self.best_factor))
-        image0 = self.asarray_level(self.best_page, ox0, oy0, ox1, oy1)
-        mag = self.mag[self.best_page]
-        if mag == self.magnification:
-            image = image0
+        if self.best_factor != 1:
+            ox0, oy0 = int(round(x0 * self.best_factor)), int(round(y0 * self.best_factor))
+            ox1, oy1 = int(round(x1 * self.best_factor)), int(round(y1 * self.best_factor))
         else:
-            factor = self.magnification / mag
-            w = int(round(image0.shape[1] * factor))
-            h = int(round(image0.shape[0] * factor))
+            ox0, oy0, ox1, oy1 = x0, y0, x1, y1
+        image0 = self.asarray_level(self.best_page, ox0, oy0, ox1, oy1)
+        if self.best_factor != 1:
+            w = int(round(image0.shape[1] / self.best_factor))
+            h = int(round(image0.shape[0] / self.best_factor))
             pil_image = Image.fromarray(image0).resize((w, h))
             image = np.array(pil_image)
+        else:
+            image = image0
         w = image.shape[1]
         h = image.shape[0]
         if (h, w) != (h0, w0):
@@ -216,7 +217,7 @@ class TiffSlide:
                 segment = bytearray()
             segments.append((segment, index))
             #yield decode((segment, index))
-        yield from self.executor.map(decode, segments)
+        yield from self.executor.map(decode, segments, timeout=1)
 
     def get_mag(self, page):
         try:
@@ -234,3 +235,6 @@ class TiffSlide:
         main_size = (main_page.imagewidth, main_page.imagelength)
         mag = round(np.mean(np.divide(size, main_size)) * mag0, 3)
         return mag
+
+    def get_max_mag(self):
+        return np.max(self.source_mags)
