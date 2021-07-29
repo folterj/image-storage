@@ -100,9 +100,8 @@ class Omero:
         tile_size = (256, 256)
 
         metadata = self.get_metadata(image_object)
-        # convert to summary for page description
-
-        metadata = {'mag': self.get_magnification(image_object)}
+        # convert to summary for page description?
+        description = f'AppMag = {self.get_magnification(image_object)}'
         pixels = image_object.getPrimaryPixels()
 
         slide_image = np.zeros((h, w, cs), dtype=np.uint8)
@@ -124,7 +123,8 @@ class Omero:
         outpath = os.path.dirname(outfilename)
         if not os.path.exists(outpath):
             os.makedirs(outpath)
-        with TiffWriter(outfilename, bigtiff=True) as writer:
+
+        with TiffWriter(outfilename, bigtiff=True, ome=True) as writer:
             writer.write(slide_image, photometric='RGB', tile=tile_size, compression='JPEG',
                          metadata=metadata)
 
