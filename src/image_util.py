@@ -2,9 +2,11 @@ import os
 import numpy as np
 import cv2 as cv
 import matplotlib.pyplot as plt
+import tifffile
 from numcodecs.abc import Codec
 from numcodecs.compat import ensure_ndarray
 from imagecodecs import jpeg2k_encode, jpeg2k_decode
+from tifffile import TiffFile
 
 
 def load_image(filename):
@@ -35,6 +37,89 @@ def show_image_gray(image):
     #thumb = cv.cvtColor(thumb, cv.COLOR_GRAY2RGB)
     plt.imshow(image, cmap='gray')
     plt.show()
+
+
+def tiff_info(filename):
+    s = ''
+    nom_size = 0
+    tiff = TiffFile(filename)
+    real_size = tiff.fstat.st_size
+    s += str(tiff) + '\n'
+    if tiff.ome_metadata:
+        s += f'OME: {print_dict(tifffile.xml2dict(tiff.ome_metadata))}\n'
+    if tiff.metaseries_metadata:
+        s += f'Series: {tiff.metaseries_metadata}\n'
+    if tiff.imagej_metadata:
+        s += f'ImageJ: {tiff.imagej_metadata}\n'
+
+    for page in tiff.pages:
+        s += str(page) + '\n'
+        s += f'Size: {page.imagewidth} {page.imagelength} {page.imagedepth} ({print_hbytes(page.size)})\n'
+        if page.is_tiled:
+            s += f'Tiling: {page.tilewidth} {page.tilelength} {page.tiledepth}\n'
+        s += f'Compression: {str(page.compression)} jpegtables: {page.jpegtables is not None}\n'
+        tag_dict = tags_to_dict(page.tags)
+        if 'TileOffsets' in tag_dict:
+            tag_dict.pop('TileOffsets')
+        if 'TileByteCounts' in tag_dict:
+            tag_dict.pop('TileByteCounts')
+        if 'ImageDescription' in tag_dict and tag_dict['ImageDescription'].startswith('<?xml'):
+            # redundant
+            tag_dict.pop('ImageDescription')
+        s += print_dict(tag_dict, compact=True) + '\n\n'
+        nom_size += page.size
+
+    s += f'Overall compression: 1:{nom_size / real_size:.1f}'
+    return s
+
+
+def tiff_info_short(filename):
+    nom_size = 0
+    tiff = TiffFile(filename)
+    s = str(filename)
+    real_size = tiff.fstat.st_size
+    for page in tiff.pages:
+        s += ' ' + str(page)
+        nom_size += page.size
+    s += f' Overall compression: 1:{nom_size / real_size:.1f}'
+    return s
+
+
+def tags_to_dict(tags):
+    tag_dict = {}
+    for tag in tags.values():
+        tag_dict[tag.name] = tag.value
+    return tag_dict
+
+
+def print_dict(d, compact=False, indent=0):
+    s = ''
+    for key, value in d.items():
+        if not isinstance(value, list):
+            if not compact: s += '\t' * indent
+            s += str(key)
+            s += ':' if compact else '\n'
+        if isinstance(value, dict):
+            s += print_dict(value, indent=indent + 1)
+        elif isinstance(value, list):
+            for v in value:
+                s += print_dict(v)
+        else:
+            if not compact: s += '\t' * (indent + 1)
+            s += str(value)
+        s += ' ' if compact else '\n'
+    return s
+
+
+def print_hbytes(bytes):
+    exps = ['', 'K', 'M', 'G', 'T']
+    div = 1024
+    exp = 0
+
+    while bytes > div:
+        bytes /= div
+        exp +=1
+    return f'{bytes:.1f}{exps[exp]}B'
 
 
 class JPEG2000(Codec):
@@ -141,10 +226,11 @@ def yuv422_to_rgb(yuv422):
     return rgb
 
 
-def compare_image(image0, image1):
+def compare_image(image0, image1, show=False):
     dif = abs(image1.astype(np.int32) - image0.astype(np.int32)).astype(np.uint8)
     rgb_dif = np.linalg.norm(np.resize(dif, (int(dif.size / 3), 3)), axis=1)
     print(f'rgb dist max: {np.max(rgb_dif):.1f} mean: {np.mean(rgb_dif):.3f}')
-    show_image(dif)
-    show_image((dif * 10).astype(np.uint8))
+    if show:
+        show_image(dif)
+        show_image((dif * 10).astype(np.uint8))
     return dif

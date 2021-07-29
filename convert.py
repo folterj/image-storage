@@ -1,5 +1,6 @@
 from src.Omero import Omero, print_omero_object
-from src.conversion import convert_slides_tiff_select
+from src.conversion import convert_slides_tiff_select, convert_slide_tiff, conversion_test
+from src.image_util import tiff_info
 
 
 def convert_slides():
@@ -34,5 +35,15 @@ def convert_omero_slides():
 
 
 if __name__ == '__main__':
+    svs_filename = 'D:/Personal/Crick/oRAScle i2i pathology/slides/2e405d74-1bf4-4b86-9b69-7f85774e5cad/TCGA-05-5425-01Z-00-DX1.85865B2F-4888-43DD-A501-458BEFCF832B.svs'
+    tiff_filename = 'D:/Personal/Crick/oRAScle i2i pathology/slides/2e405d74-1bf4-4b86-9b69-7f85774e5cad/test.tiff'
+
+    test_filename = 'D:/Personal/Crick/oRAScle i2i pathology/slides/test/test_slide.tiff'
+    output_path = 'D:/Personal/Crick/oRAScle i2i pathology/slides/test/export/'
+
+    #convert_slide_tiff(svs_filename, tiff_filename, ome=True, overwrite=True)
+    #print(tiff_info(tiff_filename))
+    conversion_test(test_filename, output_path)
+
     #convert_slides()
-    convert_omero_slides()
+    #convert_omero_slides()

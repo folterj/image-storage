@@ -11,17 +11,20 @@
 
 import glob
 import os
+import bioformats
+import javabridge
 import numpy as np
 import pandas as pd
+import pyvips
 import zarr
+from imageio import imread
 from numcodecs import register_codec
 from numcodecs.blosc import Blosc
 from tifffile import tifffile, TiffFile, TiffWriter
 from tqdm import tqdm
 
 from src.TiffSlide import TiffSlide
-from src.image_util import JPEG2000, YUV, YUV422, YUV420
-
+from src.image_util import JPEG2000, YUV, YUV422, YUV420, tags_to_dict, compare_image, tiff_info_short
 
 register_codec(JPEG2000)
 register_codec(YUV)
@@ -146,18 +149,79 @@ def convert_slides_tiff_select(input_path, output_path, output_ext, slidelist_fi
         convert_slide_tiff(filename, outfilename)
 
 
-def convert_slide_tiff(infilename, outfilename):
-    if not os.path.exists(outfilename):
+def convert_slide_tiff(infilename, outfilename, ome=False, overwrite=False):
+    if overwrite or not os.path.exists(outfilename):
         print(f'{infilename} -> {outfilename}')
         try:
             tiff = TiffFile(infilename)
             outpath = os.path.dirname(outfilename)
             if not os.path.exists(outpath):
                 os.makedirs(outpath)
-            with TiffWriter(outfilename, bigtiff=True) as writer:
+            with TiffWriter(outfilename, ome=ome, bigtiff=True) as writer:
                 for page in tiff.pages:
                     if page.is_tiled:
                         tile_size = (page.tilelength, page.tilewidth)
-                        writer.write(page.asarray(), tile=tile_size, compression='JPEG', description=page.description)
+                        if ome:
+                            metadata = tags_to_dict(page.tags)
+                            description = None
+                        else:
+                            metadata = None
+                            description = page.description
+                        writer.write(page.asarray(), tile=tile_size, compression=['JPEG2000', 10],
+                                     metadata=metadata, description=description)
         except Exception as e:
             print('file:', infilename, e)
+
+
+def export_tiffwriter(filename, image, tile_size, compression):
+    with TiffWriter(filename) as writer:
+        writer.write(image, tile=tile_size, compression=compression)
+
+
+def export_vips(filename, image, tile_size, compression):
+    #numpy2vips
+    image = pyvips.Image.new_from_array(image)
+    image.tiffsave()
+    #image.write_to_file(filename)
+
+
+def export_bioformats(filename, image, tile_size, compression):
+    if image.dtype == np.uint8:
+        pixel_type = bioformats.PT_UINT8
+    else:
+        pixel_type = bioformats.PT_UINT16
+    bioformats.write_image(filename, image, pixel_type)
+
+    # writer = bioformats.OMETiffWriter()
+    # writer.setTileSizeX(tile_size[0])
+    # writer.setTileSizeY(tile_size[1])
+    # writer.setId(filename)
+    # writer.saveBytes(tile_bytes)
+
+
+def conversion_test(infilename, outpath):
+    javabridge.start_vm(class_path=bioformats.JARS)
+    export_list = [
+        (export_vips, 'tiff', ('JPEG', 90)),
+        (export_bioformats, 'tiff', ('JPEG', 90)),
+        (export_tiffwriter, 'tiff', ('JPEG', 90)),
+        (export_tiffwriter, 'tiff', ('JPEG2000', 70)),
+        (export_tiffwriter, 'tiff', ('JPEGXR', 90)),
+    ]
+    tile_size = (256, 256)
+    image = imread(infilename)
+    print(tiff_info_short(infilename))
+    for export in export_list:
+        function, format, compression = export
+        if isinstance(compression, tuple):
+            compressions = "_".join(map(str, compression))
+        else:
+            compressions = compression
+        filename = f'{function.__name__}_{compressions}.{format}'
+        outfilename = os.path.join(outpath, filename)
+        function(outfilename, image, tile_size, compression)
+        eimage = imread(outfilename)
+        print(tiff_info_short(outfilename))
+        compare_image(image, eimage)
+
+    javabridge.kill_vm()
