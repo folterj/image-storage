@@ -106,7 +106,7 @@ class Omero:
         pixels = image_object.getPrimaryPixels()
 
         slide_image = np.zeros((h, w, cs), dtype=np.uint8)
-        save_tiff(outfilename, slide_image, tile_size, 'JPEG', metadata)    # test saving blank image
+        save_tiff(outfilename, slide_image, tile_size, None, metadata)    # test saving blank image
 
         for y in tqdm(range(ny)):
             for x in range(nx):
@@ -122,7 +122,7 @@ class Omero:
                 for c, image in enumerate(image_gen):
                     slide_image[sy:sy + th, sx:sx + tw, c] = image
 
-        save_tiff(outfilename, slide_image, tile_size, 'JPEG', metadata)
+        save_tiff(outfilename, slide_image, tile_size, None, metadata)
 
 
     def random_read_test(self):
