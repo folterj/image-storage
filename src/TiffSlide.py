@@ -3,9 +3,12 @@
 
 import os
 import numpy as np
+import tifffile
 from PIL import Image
 from tifffile import TiffFile
 from concurrent.futures import ThreadPoolExecutor
+
+from src.image_util import find_ome_magnification
 
 
 class TiffSlide:
@@ -26,6 +29,7 @@ class TiffSlide:
         self.main_page = -1
         self.best_page = -1
         tiff = TiffFile(filename)
+        self.ome_metadata = tiff.ome_metadata
         index = 0
         for page in tiff.pages:
             if page.is_tiled:
@@ -220,13 +224,16 @@ class TiffSlide:
         yield from self.executor.map(decode, segments, timeout=1)
 
     def get_mag(self, page):
+        mag = 0
         try:
+            if page.is_ome and self.ome_metadata is not None:
+                mag = find_ome_magnification(self.ome_metadata)
             tags = {item.split('=')[0].strip(): item.split('=')[1].strip() for item in page.description.split('|')}
             if 'AppMag' in tags:
-                return float(tags['AppMag'])
+                mag = float(tags['AppMag'])
         except:
             pass
-        return 0
+        return mag
 
     def calc_mag(self, page):
         main_page = self.pages[self.main_page]

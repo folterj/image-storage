@@ -73,6 +73,10 @@ def tiff_info(filename):
     return s
 
 
+def find_ome_magnification(ome_xml):
+    metadata = tifffile.xml2dict(ome_xml)
+
+
 def tiff_info_short(filename):
     nom_size = 0
     tiff = TiffFile(filename)

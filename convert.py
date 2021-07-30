@@ -43,7 +43,7 @@ if __name__ == '__main__':
 
     #convert_slide_tiff(svs_filename, tiff_filename, ome=True, overwrite=True)
     #print(tiff_info(tiff_filename))
-    conversion_test(test_filename, output_path)
+    #conversion_test(test_filename, output_path)
 
     #convert_slides()
-    #convert_omero_slides()
+    convert_omero_slides()

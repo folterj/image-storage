@@ -6,6 +6,7 @@ from getpass import getpass
 from tifffile import TiffWriter
 from tqdm import tqdm
 
+from src.conversion import save_tiff
 from src.image_util import show_image
 
 
@@ -57,7 +58,7 @@ class Omero:
         zs, cs, ts = image_object.getSizeZ(), image_object.getSizeC(), image_object.getSizeT()
         return xs, ys, zs, cs, ts
 
-    def get_metadata(self, image_object):
+    def get_metadata_dict(self, image_object):
         metadata = {}
         data = []
         for data0 in image_object.loadOriginalMetadata():
@@ -86,27 +87,28 @@ class Omero:
         w, h, zs, cs, ts = self.get_size(image_object)
         print('Size:', w, h, zs, cs, ts)
 
-        #tiff_content = image_object.exportOmeTiff()    # not working
+        #outpath = os.path.dirname(outfilename)
+        #if not os.path.exists(outpath):
+        #    os.makedirs(outpath)
+
+        #tiff_content = image_object.exportOmeTiff()    # not working (~image too large)
         #with open(outfilename, 'wb') as writer:
         #    writer.write(tiff_content)
 
-        # slide_image = pixels.getPlane()   # not working
+        # slide_image = pixels.getPlane()   # not working (~image too large)
 
-        h//=100
-        w//=100
         read_size = 1024
         ny = int(np.ceil(h / read_size))
         nx = int(np.ceil(w / read_size))
         tile_size = (256, 256)
 
-        metadata = self.get_metadata(image_object)
-        # convert to summary for page description?
-        description = f'AppMag = {self.get_magnification(image_object)}'
+        metadata = self.get_metadata_dict(image_object)
         pixels = image_object.getPrimaryPixels()
 
         slide_image = np.zeros((h, w, cs), dtype=np.uint8)
+        save_tiff(outfilename, slide_image, tile_size, 'JPEG', metadata)    # test saving blank image
 
-        for y in range(ny):
+        for y in tqdm(range(ny)):
             for x in range(nx):
                 sx, sy = x * read_size, y * read_size
                 tw, th = read_size, read_size
@@ -120,13 +122,8 @@ class Omero:
                 for c, image in enumerate(image_gen):
                     slide_image[sy:sy + th, sx:sx + tw, c] = image
 
-        outpath = os.path.dirname(outfilename)
-        if not os.path.exists(outpath):
-            os.makedirs(outpath)
+        save_tiff(outfilename, slide_image, tile_size, 'JPEG', metadata)
 
-        with TiffWriter(outfilename, bigtiff=True, ome=True) as writer:
-            writer.write(slide_image, photometric='RGB', tile=tile_size, compression='JPEG',
-                         metadata=metadata)
 
     def random_read_test(self):
         print('Read test')

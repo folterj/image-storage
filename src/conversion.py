@@ -11,15 +11,19 @@
 
 import glob
 import os
-import bioformats
-import javabridge
+#import bioformats
+#import javabridge
 import numpy as np
 import pandas as pd
+
+os.environ['PATH'] = 'C:/vips/bin;' + os.environ['PATH']
 import pyvips
+
 import zarr
 from imageio import imread
 from numcodecs import register_codec
 from numcodecs.blosc import Blosc
+from pyvips import ForeignTiffCompression
 from tifffile import tifffile, TiffFile, TiffWriter
 from tqdm import tqdm
 
@@ -162,7 +166,10 @@ def convert_slide_tiff(infilename, outfilename, ome=False, overwrite=False):
                     if page.is_tiled:
                         tile_size = (page.tilelength, page.tilewidth)
                         if ome:
-                            metadata = tags_to_dict(page.tags)
+                            if page.is_ome:
+                                metadata = tifffile.xml2dict(tiff.ome_metadata)
+                            else:
+                                metadata = tags_to_dict(page.tags)  # create pseudo OME metadata
                             description = None
                         else:
                             metadata = None
@@ -173,19 +180,27 @@ def convert_slide_tiff(infilename, outfilename, ome=False, overwrite=False):
             print('file:', infilename, e)
 
 
+def save_tiff(filename, image, tile_size, compression, metadata):
+    with TiffWriter(filename, bigtiff=True, ome=True) as writer:
+        writer.write(image, photometric='RGB', tile=tile_size, compression=compression, metadata=metadata)
+
+
 def export_tiffwriter(filename, image, tile_size, compression):
-    with TiffWriter(filename) as writer:
+    with TiffWriter(filename, bigtiff=True) as writer:
         writer.write(image, tile=tile_size, compression=compression)
 
 
 def export_vips(filename, image, tile_size, compression):
     #numpy2vips
-    image = pyvips.Image.new_from_array(image)
-    image.tiffsave()
+    image = pyvips.Image.new_from_array(image.reshape(-1))
+    image.tiffsave(filename, tile=True, tile_width=tile_size[0], tile_height=tile_size[1], bigtiff=True,
+                   compression=ForeignTiffCompression.JPEG, Q=compression[1])
     #image.write_to_file(filename)
 
 
 def export_bioformats(filename, image, tile_size, compression):
+    javabridge.start_vm(class_path=bioformats.JARS)
+
     if image.dtype == np.uint8:
         pixel_type = bioformats.PT_UINT8
     else:
@@ -198,9 +213,10 @@ def export_bioformats(filename, image, tile_size, compression):
     # writer.setId(filename)
     # writer.saveBytes(tile_bytes)
 
+    javabridge.kill_vm()
+
 
 def conversion_test(infilename, outpath):
-    javabridge.start_vm(class_path=bioformats.JARS)
     export_list = [
         (export_vips, 'tiff', ('JPEG', 90)),
         (export_bioformats, 'tiff', ('JPEG', 90)),
@@ -208,6 +224,8 @@ def conversion_test(infilename, outpath):
         (export_tiffwriter, 'tiff', ('JPEG2000', 70)),
         (export_tiffwriter, 'tiff', ('JPEGXR', 90)),
     ]
+    #export_list = [(export_tiffwriter, 'tiff', ('JPEGXR', 90))]
+
     tile_size = (256, 256)
     image = imread(infilename)
     print(tiff_info_short(infilename))
@@ -223,5 +241,3 @@ def conversion_test(infilename, outpath):
         eimage = imread(outfilename)
         print(tiff_info_short(outfilename))
         compare_image(image, eimage)
-
-    javabridge.kill_vm()
