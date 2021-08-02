@@ -78,10 +78,10 @@ def test_read_zarr(image_filename, n=1000):
 if __name__ == '__main__':
     image_dir = 'resources/images/'
     #filename = os.path.join(image_dir, "test.svs")
-    filename_svs = os.path.join(image_dir, '4c88d448-6264-4d4b-9c4e-b04da3f65841/TCGA-69-7765-01Z-00-DX1.ac389366-febb-488c-9190-fe00bc07cd20.svs')
-    filename_tiff = os.path.join(image_dir, '4c88d448-6264-4d4b-9c4e-b04da3f65841/TCGA-69-7765-01Z-00-DX1.ac389366-febb-488c-9190-fe00bc07cd20.tiff')
-    magnification = 20
-    patch_size = (299, 299)
+    filename_svs = os.path.join(image_dir, 'test.svs')
+    filename_tiff = os.path.join(image_dir, 'test.tiff')
+    magnification = 40
+    patch_size = (512, 512)
 
     #image = test_load(filename, magnification, [0, 0], [1000, 1000])
     #plt.imshow(image)

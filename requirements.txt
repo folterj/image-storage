@@ -7,7 +7,6 @@ imagecodecs
 numcodecs
 TiffFile
 zarr
-omero-py==5.6.2
 python-bioformats
 pyvips
 tqdm
